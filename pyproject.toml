@@ -1,0 +1,23 @@
+[project]
+name = "foundry-apim-mcp-server"
+version = "0.1.0"
+description = "MCP Server for Azure AI Foundry with OAuth authentication"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastmcp>=2.0,<3",
+    "azure-ai-projects>=1.0.0b11",
+    "azure-identity>=1.19.0",
+    "openai>=1.70.0",
+    "httpx>=0.27.0",
+    "pydantic>=2.0",
+    "python-dotenv>=1.0.0",
+    "aiohttp>=3.9.0",
+]
+
+[project.scripts]
+foundry-mcp-server = "foundry_apim_mcp_server.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
