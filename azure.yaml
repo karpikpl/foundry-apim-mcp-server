@@ -1,0 +1,33 @@
+name: foundry-apim-mcp-server
+
+infra:
+  provider: bicep
+  path: ./infra
+  module: main
+
+hooks:
+  postprovision:
+    posix:
+      shell: sh
+      run: |
+        echo "=========================================="
+        echo "MCP Server provisioned successfully!"
+        echo "=========================================="
+        echo ""
+        echo "🔗 MCP Endpoint: ${MCP_SERVER_ENDPOINT}"
+        echo "🆔 Managed Identity Client ID: ${MANAGED_IDENTITY_CLIENT_ID}"
+        echo ""
+      interactive: true
+      continueOnError: false
+    windows:
+      shell: pwsh
+      run: |
+        Write-Host "=========================================="
+        Write-Host "MCP Server provisioned successfully!"
+        Write-Host "=========================================="
+        Write-Host ""
+        Write-Host "MCP Endpoint: $env:MCP_SERVER_ENDPOINT"
+        Write-Host "Managed Identity Client ID: $env:MANAGED_IDENTITY_CLIENT_ID"
+        Write-Host ""
+      interactive: true
+      continueOnError: false

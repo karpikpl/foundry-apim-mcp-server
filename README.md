@@ -153,6 +153,73 @@ mcp_tool = MCPTool(
 )
 ```
 
+## Docker
+
+```bash
+# Build
+docker build -t foundry-mcp-server .
+
+# Run with managed identity (e.g. on Azure Container Apps / ACI)
+docker run -p 8000:8000 foundry-mcp-server
+
+# Run with token passthrough
+docker run -p 8000:8000 -e AUTH_MODE=passthrough foundry-mcp-server
+
+# Run with an .env file
+docker run -p 8000:8000 --env-file .env foundry-mcp-server
+```
+
+> The image defaults to `MCP_HOST=0.0.0.0` so it listens on all interfaces inside the container.
+
+## Authentication Flow
+
+This server does **not** use OBO (On-Behalf-Of) flow.
+
+It supports two modes, controlled by the `AUTH_MODE` environment variable:
+
+| Mode | `AUTH_MODE` | How it works |
+|---|---|---|
+| **DefaultAzureCredential** (default) | `default_credential` | Uses the standard Azure Identity chain: managed identity → Azure CLI → environment variables → VS Code credential. In production containers this typically resolves to **managed identity**. |
+| **Token passthrough** | `passthrough` | The MCP client sends an Azure Entra ID bearer token in the `Authorization` header; the server forwards that same token to Azure AI Foundry APIs. No token exchange or OBO is involved. |
+
+### Required Azure RBAC Permissions
+
+The identity (managed identity or user principal) must have:
+
+| Permission / Role | Scope | Why |
+|---|---|---|
+| **Reader** | Subscription(s) or Management Group | `list_projects` makes ARM management plane calls to enumerate subscriptions, Cognitive Services accounts, and projects (see actions below) |
+| **Cognitive Services OpenAI User** | AI Foundry project resource | Required to call model deployments, create/manage agents, and chat |
+| **Cognitive Services Contributor** *(optional)* | AI Foundry project resource | Only needed if you want to create or delete agents via the server |
+
+> If you only `connect` to a known project endpoint (skip `list_projects`), the **Reader** role on the subscription is not required.
+
+<details>
+<summary>Specific ARM actions required by <code>list_projects</code></summary>
+
+If using a custom role instead of the built-in **Reader**, grant these actions:
+
+| ARM Action | Used for |
+|---|---|
+| `Microsoft.Resources/subscriptions/read` | Enumerate accessible subscriptions |
+| `Microsoft.CognitiveServices/accounts/read` | List AI Foundry / Cognitive Services accounts per subscription |
+| `Microsoft.CognitiveServices/accounts/projects/read` | List projects under each account |
+
+</details>
+
+## Environment Variables Reference
+
+| Variable | Required | Description | Default |
+|---|---|---|---|
+| `AUTH_MODE` | No | `default_credential` or `passthrough` | `default_credential` |
+| `AZURE_AI_FOUNDRY_CONNECTION_STRING` | No | AI Foundry project endpoint. Not needed if you call `connect` at runtime. | — |
+| `AZURE_OPENAI_CHAT_DEPLOYMENT_NAME` | No | Default model deployment for `create_agent` / `direct_chat` (e.g. `gpt-5-mini`) | — |
+| `AZURE_TENANT_ID` | No | Tenant ID hint for DefaultAzureCredential | — |
+| `AZURE_BEARER_TOKEN` | No | Manual bearer token (only for `passthrough` mode during dev) | — |
+| `AZURE_CLIENT_ID` | No | Client ID for managed identity (set when using user-assigned managed identity) | — |
+| `MCP_HOST` | No | Host to bind the server to | `127.0.0.1` (`0.0.0.0` in Docker) |
+| `MCP_PORT` | No | Port to run the server on | `8000` |
+
 ## Development
 
 ```bash
