@@ -102,11 +102,19 @@ module mcpServer './modules/aca/container-app.bicep' = {
     }
     probes: [
       {
+        type: 'Startup'
+        initialDelaySeconds: 3
+        periodSeconds: 5
+        failureThreshold: 10
+        tcpSocket: {
+          port: 8000
+        }
+      }
+      {
         type: 'Liveness'
-        initialDelaySeconds: 5
+        initialDelaySeconds: 10
         periodSeconds: 30
-        httpGet: {
-          path: '/mcp'
+        tcpSocket: {
           port: 8000
         }
       }

@@ -113,6 +113,13 @@ mcp = FastMCP(
 )
 
 
+@mcp.custom_route("/health", methods=["GET"])
+async def health(request):
+    from starlette.responses import JSONResponse
+
+    return JSONResponse({"status": "ok"})
+
+
 # ── Tools ────────────────────────────────────────────────────────
 
 
