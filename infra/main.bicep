@@ -76,9 +76,10 @@ module mcpServer './modules/aca/container-app.bicep' = {
     userAssignedManagedIdentityResourceId: identity.outputs.MANAGED_IDENTITY_RESOURCE_ID
     ingressTargetPort: 8000
     ingressExternal: true
+    stickySessionsAffinity: 'sticky'
     cpu: '0.5'
     memory: '1.0Gi'
-    scaleMinReplicas: 1
+    scaleMinReplicas: 2
     scaleMaxReplicas: 3
     definition: {
       settings: [
@@ -106,7 +107,8 @@ module mcpServer './modules/aca/container-app.bicep' = {
         initialDelaySeconds: 3
         periodSeconds: 5
         failureThreshold: 10
-        tcpSocket: {
+        httpGet: {
+          path: '/health'
           port: 8000
         }
       }
@@ -114,7 +116,8 @@ module mcpServer './modules/aca/container-app.bicep' = {
         type: 'Liveness'
         initialDelaySeconds: 10
         periodSeconds: 30
-        tcpSocket: {
+        httpGet: {
+          path: '/health'
           port: 8000
         }
       }

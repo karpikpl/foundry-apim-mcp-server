@@ -24,6 +24,7 @@ param initContainersTemplate array = []
 param authentication object = {}
 param managedIdentityClientIdSecretName string = ''
 param containerArgs string[] = []
+param stickySessionsAffinity string = 'none'
 
 var appSettingsArray = filter(array(definition.settings), i => i.name != '')
 var secrets = map(filter(appSettingsArray, i => i.?secret != null), i => {
@@ -133,6 +134,7 @@ module containerApp 'br/public:avm/res/app/container-app:0.20.0' = {
     location: location
     tags: union(tags, { 'azd-service-name': name })
     ingressExternal: ingressExternal
+    stickySessionsAffinity: stickySessionsAffinity
     volumes: additionalVolumes
     initContainersTemplate: initContainersTemplate
     authConfig: empty(authentication)
