@@ -1,0 +1,127 @@
+<!--
+    APIM policy for MCP session affinity with Container Apps.
+
+    Problem: MCP uses stateful sessions (Mcp-Session-Id header), but most MCP
+    clients don't send cookies. Container Apps sticky sessions rely on cookies.
+
+    Solution: APIM caches the backend acaAffinity cookie keyed by the
+    Mcp-Session-Id header and injects it on subsequent backend requests,
+    ensuring the same MCP session always reaches the same replica.
+
+    Note: The Mcp-Session-Id is set by the SERVER in its initialize response.
+    The client then echoes it on all subsequent requests. We must handle:
+      1. Initial request (POST): no session ID in request; cache using response header
+      2. Subsequent requests: session ID in request; look up cached cookie
+      3. Session teardown (DELETE): client sends DELETE with session ID; evict cache
+      4. Stale session (404): server rejects unknown session ID; evict cache
+-->
+<policies>
+    <inbound>
+        <!-- Store whether the client sent a session ID (for debug) -->
+        <set-variable name="reqSessionId" value="@(context.Request.Headers.GetValueOrDefault("mcp-session-id",""))" />
+        <choose>
+            <when condition="@(context.Request.Headers.ContainsKey("mcp-session-id"))">
+                <cache-lookup-value
+                    key="@("acaAffinity-" + context.Request.Headers.GetValueOrDefault("mcp-session-id","none"))"
+                    variable-name="cachedAffinity" />
+                <set-header name="Cookie" exists-action="append">
+                    <value>@{
+                        if (context.Variables.ContainsKey("cachedAffinity")) {
+                            return (string)context.Variables["cachedAffinity"];
+                        }
+                        return "";
+                    }</value>
+                </set-header>
+            </when>
+        </choose>
+    </inbound>
+    <backend>
+        <base />
+    </backend>
+    <outbound>
+        <!-- Determine the session ID: prefer the response header (initialize),
+             fall back to the request header (subsequent calls) -->
+        <set-variable name="effectiveSessionId" value="@{
+            string respId = context.Response.Headers.GetValueOrDefault("mcp-session-id","");
+            if (!string.IsNullOrEmpty(respId)) {
+                return respId;
+            }
+            return context.Request.Headers.GetValueOrDefault("mcp-session-id","");
+        }" />
+        <!-- Extract the acaAffinity cookie from the backend response -->
+        <set-variable name="backendAffinity" value="@{
+            string[] cookies;
+            if (context.Response.Headers.TryGetValue("Set-Cookie", out cookies)) {
+                foreach (var h in cookies) {
+                    if (h.Contains("acaAffinity")) {
+                        return h.Split(';')[0];
+                    }
+                }
+            }
+            return "";
+        }" />
+        <!-- Cache the affinity cookie if we have both a session ID and a cookie -->
+        <choose>
+            <!-- Session teardown: client sent DELETE, or server returned 404 (stale session) → evict cache -->
+            <when condition="@(context.Request.Method == "DELETE" || context.Response.StatusCode == 404)">
+                <cache-remove-value
+                    key="@("acaAffinity-" + (string)context.Variables["effectiveSessionId"])" />
+            </when>
+            <!-- Normal flow: store affinity when we have both a session ID and a cookie -->
+            <when condition="@(!string.IsNullOrEmpty((string)context.Variables["effectiveSessionId"]) &amp;&amp; !string.IsNullOrEmpty((string)context.Variables["backendAffinity"]))">
+                <cache-store-value
+                    key="@("acaAffinity-" + (string)context.Variables["effectiveSessionId"])"
+                    value="@((string)context.Variables["backendAffinity"])"
+                    duration="3600" />
+            </when>
+        </choose>
+        <!-- Debug headers so the MCP client can see what APIM did
+        <set-header name="X-APIM-Session-Source" exists-action="override">
+            <value>@{
+                string reqId = (string)context.Variables["reqSessionId"];
+                if (context.Request.Method == "DELETE" &amp;&amp; !string.IsNullOrEmpty(reqId)) {
+                    return "client-teardown";
+                }
+                if (context.Response.StatusCode == 404 &amp;&amp; !string.IsNullOrEmpty(reqId)) {
+                    return "server-rejected";
+                }
+                string respId = context.Response.Headers.GetValueOrDefault("mcp-session-id","");
+                if (!string.IsNullOrEmpty(respId) &amp;&amp; string.IsNullOrEmpty(reqId)) {
+                    return "server-initialize";
+                }
+                if (!string.IsNullOrEmpty(reqId)) {
+                    return "client-echo";
+                }
+                return "none";
+            }</value>
+        </set-header>
+        <set-header name="X-APIM-Session-Id" exists-action="override">
+            <value>@((string)context.Variables["effectiveSessionId"])</value>
+        </set-header>
+        <set-header name="X-APIM-Affinity-Cached" exists-action="override">
+            <value>@(context.Variables.ContainsKey("cachedAffinity") ? "true" : "false")</value>
+        </set-header>
+        <set-header name="X-APIM-Affinity-Stored" exists-action="override">
+            <value>@(!string.IsNullOrEmpty((string)context.Variables["backendAffinity"]) &amp;&amp; !string.IsNullOrEmpty((string)context.Variables["effectiveSessionId"]) ? "true" : "false")</value>
+        </set-header>
+        <set-header name="X-APIM-Affinity-Evicted" exists-action="override">
+            <value>@(context.Request.Method == "DELETE" || context.Response.StatusCode == 404 ? "true" : "false")</value>
+        </set-header>
+        <set-header name="X-APIM-Backend-Affinity" exists-action="override">
+            <value>@{
+                string cached = context.Variables.ContainsKey("cachedAffinity") ? (string)context.Variables["cachedAffinity"] : "";
+                string fresh = (string)context.Variables["backendAffinity"];
+                if (!string.IsNullOrEmpty(fresh)) {
+                    return "fresh: " + fresh;
+                }
+                if (!string.IsNullOrEmpty(cached)) {
+                    return "cached: " + cached;
+                }
+                return "none";
+            }</value>
+        </set-header> -->
+    </outbound>
+    <on-error>
+        <base />
+    </on-error>
+</policies>
